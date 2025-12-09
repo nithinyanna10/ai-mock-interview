@@ -32,9 +32,8 @@ agents:
 
 # LLM Configuration
 llm:
-  provider: "ollama"  # ollama, openai, gemini
-  model: "gpt-oss:120b-cloud"  # For Ollama - actual model name from ollama list
-  base_url: "http://localhost:11434"  # Ollama default (use host.docker.internal in Docker)
+  provider: "openai"  # openai, ollama, gemini
+  model: "gpt-4o-mini"  # OpenAI model: gpt-4o-mini (fast/cheap), gpt-4o (better quality), gpt-3.5-turbo
   timeout: 30
   max_retries: 3
 

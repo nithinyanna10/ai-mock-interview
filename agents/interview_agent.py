@@ -15,7 +15,7 @@ from livekit.plugins.openai import STT, TTS
 import yaml
 
 from agents.stage_manager import StageManager, InterviewStage
-from agents.ollama_llm import OllamaLLM
+from livekit.plugins.openai import LLM as OpenAILLM
 
 logger = logging.getLogger(__name__)
 
@@ -98,16 +98,24 @@ async def interview_agent(ctx: agents.JobContext):
     stage_manager = StageManager(redis_client=redis_client, config_path=config_path)
     await stage_manager.initialize(room_sid)
     
-    # Initialize Ollama LLM
-    llm_config = config.get("llm", {})
-    ollama_llm = OllamaLLM(
-        model=llm_config.get("model", "gpt-oss:120b-cloud"),  # Use your actual model name
-        base_url=llm_config.get("base_url", "http://host.docker.internal:11434")
-    )
+    # Initialize OpenAI LLM (much better than Ollama - no networking issues!)
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise ValueError("OPENAI_API_KEY is required! Add it to .env file")
     
-    # Create assistant agent
+    # Use OpenAI GPT-4 or GPT-3.5-turbo for conversation
+    llm_config = config.get("llm", {})
+    openai_llm = OpenAILLM(
+        model=llm_config.get("model", "gpt-4o-mini"),  # Fast and cheap, or use "gpt-4o" for better quality
+    )
+    logger.info(f"✅ Using OpenAI LLM: {llm_config.get('model', 'gpt-4o-mini')}")
+    
+    # Create assistant agent with proactive instructions
     assistant = InterviewAssistant(stage_manager)
     assistant.room_id = room_sid
+    
+    # Note: We'll trigger greeting in the stage loop instead of using event handlers
+    # Event handlers on ctx.room need to be set up after session.start()
     
     # Set up event handlers to capture conversation
     async def on_user_speech(text: str):
@@ -133,35 +141,66 @@ async def interview_agent(ctx: agents.JobContext):
     # Option 2: Use other providers (Deepgram, Azure, etc.)
     # Option 3: For testing, you can use OpenAI's free tier
     
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    
-    if openai_api_key:
-        logger.info("✅ Using OpenAI STT and TTS")
-        session = AgentSession(
-            vad=silero.VAD.load(),
-            stt=STT(),  # OpenAI STT - transcribes your speech
-            llm=ollama_llm,
-            tts=TTS(),  # OpenAI TTS - speaks responses
-            allow_interruptions=True,
-        )
-    else:
-        logger.warning("⚠️  No OPENAI_API_KEY found! Agent will NOT be able to hear or speak.")
-        logger.warning("   Add OPENAI_API_KEY to .env file for voice interaction.")
-        logger.warning("   Without STT/TTS: Agent can only detect voice activity, not understand speech.")
-        # AgentSession without STT/TTS - will only detect voice but not transcribe or speak
-        session = AgentSession(
-            vad=silero.VAD.load(),
-            llm=ollama_llm,
-            allow_interruptions=True,
-        )
+    # Use OpenAI for everything: STT, LLM, and TTS
+    logger.info("✅ Using OpenAI for STT, LLM, and TTS")
+    session = AgentSession(
+        vad=silero.VAD.load(),
+        stt=STT(),  # OpenAI STT - transcribes your speech
+        llm=openai_llm,  # OpenAI LLM - generates responses
+        tts=TTS(),  # OpenAI TTS - speaks responses
+        allow_interruptions=True,
+    )
     
     try:
         logger.info("📡 Starting AgentSession...")
+        logger.info(f"🔗 Connecting to room: {ctx.room.name} (SID: {ctx.room.sid})")
+        
         await session.start(
             room=ctx.room,
             agent=assistant,
         )
-        logger.info("✅ AgentSession started successfully - tracks should be publishing now")
+        
+        logger.info("✅ AgentSession started successfully")
+        
+        # Verify agent is in the room
+        participants = ctx.room.remote_participants
+        logger.info(f"👥 Room participants: {len(participants)} remote participants")
+        
+        # Check if agent participant exists
+        local_participant = ctx.room.local_participant
+        if local_participant:
+            logger.info(f"🤖 Agent participant: {local_participant.identity}")
+            tracks = local_participant.track_publications
+            logger.info(f"📡 Published tracks: {len(tracks)} tracks")
+            for track in tracks:
+                logger.info(f"   - Track: {track.name} ({track.kind})")
+            
+            # If no tracks published (no TTS), publish a silent audio track so client sees the agent
+            if len(tracks) == 0:
+                logger.info("ℹ️  No tracks yet - publishing silent audio track so client can see agent")
+                try:
+                    # Create a silent audio track so the client knows the agent is there
+                    from livekit import rtc
+                    import numpy as np
+                    
+                    # Create silent audio source (48kHz, mono, 16-bit)
+                    sample_rate = 48000
+                    num_samples = sample_rate  # 1 second of silence
+                    silent_audio = np.zeros(num_samples, dtype=np.int16)
+                    
+                    # Create audio source
+                    source = rtc.AudioSource(sample_rate, num_channels=1)
+                    track = rtc.LocalAudioTrack.create_audio_track("agent-audio", source)
+                    
+                    # Publish the track
+                    await local_participant.publish_track(track)
+                    logger.info("✅ Published silent audio track - agent should now be visible!")
+                except Exception as e:
+                    logger.warning(f"⚠️  Could not publish silent track: {e}")
+                    logger.info("   Agent is connected but may not appear until it speaks")
+        
+        logger.info("✅ Agent connected to room!")
+        
     except Exception as e:
         logger.error(f"❌ Error starting AgentSession: {e}", exc_info=True)
         raise
@@ -190,21 +229,39 @@ async def interview_agent(ctx: agents.JobContext):
 
 async def run_stage_loop(session: AgentSession, stage_manager: StageManager, assistant: InterviewAssistant):
     """Event loop for handling stages and transitions"""
-    await asyncio.sleep(1)  # Wait for connection to stabilize
+    await asyncio.sleep(3)  # Wait for connection to stabilize and user to potentially join
+    
+    # Always start the interview - transition to self_intro if still in start stage
+    current_stage = stage_manager.get_stage()
+    logger.info(f"📊 Current stage: {current_stage}")
+    
+    # If still in start stage, transition to self_intro first
+    if current_stage == InterviewStage.START.value or current_stage == "start":
+        logger.info("🔄 Transitioning from start to self_intro...")
+        await stage_manager.transition_to_next()
+        current_stage = stage_manager.get_stage()
+        logger.info(f"📊 New stage: {current_stage}")
+    
+    # Now start the interview
+    if current_stage == InterviewStage.SELF_INTRO.value or current_stage == "self_intro":
+        logger.info("🚀 Starting interview - sending greeting...")
+        await handle_self_intro(session, stage_manager, assistant)
     
     while True:
         try:
             current_stage = stage_manager.get_stage()
-            if current_stage == InterviewStage.SELF_INTRO.value:
-                await handle_self_intro(session, stage_manager, assistant)
-            elif current_stage == InterviewStage.EXPERIENCE.value:
+            if current_stage == InterviewStage.EXPERIENCE.value:
                 await handle_experience(session, stage_manager, assistant)
             elif current_stage == InterviewStage.END.value:
-                await session.generate_reply(user_input="Thank you! The interview is complete.")
+                try:
+                    await session.say("Thank you! The interview is complete.", allow_interruptions=True)
+                except Exception as e:
+                    logger.warning(f"Could not send final message: {e}")
                 break
             await asyncio.sleep(0.5)
         except Exception as e:
-            logger.error(f"Error in stage loop: {e}")
+            # Don't exit on errors, just log and continue
+            logger.error(f"Error in stage loop: {e}", exc_info=True)
             await asyncio.sleep(1)
 
 
@@ -213,9 +270,28 @@ async def handle_self_intro(session: AgentSession, stage_manager: StageManager, 
     if not stage_manager.flag_intro_start:
         stage_manager.flag_intro_start = True
         greeting = "Hello! I'm conducting your interview today. To start, could you tell me a bit about yourself - your background, what you're passionate about, and what brings you here today?"
-        await session.generate_reply(user_input=greeting)
+        logger.info(f"🎤 Attempting to send greeting: {greeting[:50]}...")
+        try:
+            # Use say() to make the agent speak proactively
+            logger.info("Calling session.say()...")
+            # session.say() returns a SpeechHandle - we can await it or just call it
+            speech_handle = await session.say(greeting, allow_interruptions=True)
+            logger.info(f"✅ session.say() returned: {type(speech_handle)}")
+            # Wait a bit for speech to start
+            await asyncio.sleep(0.5)
+            logger.info(f"✅ Agent said greeting successfully!")
+        except Exception as e:
+            logger.error(f"❌ Error with session.say(): {e}", exc_info=True, stack_info=True)
+            # Fallback: try generate_reply - this should work for proactive speech
+            try:
+                logger.info("Trying fallback: generate_reply()...")
+                # generate_reply needs user_input - but we can pass the greeting as if user said it
+                await session.generate_reply(user_input=greeting)
+                logger.info("✅ Fallback generate_reply() succeeded")
+            except Exception as e2:
+                logger.error(f"❌ Fallback also failed: {e2}", exc_info=True)
         await assistant.save_to_transcript("assistant", greeting)
-        logger.info("Self-intro stage started")
+        logger.info("✅ Self-intro stage started")
         
         stage_config = stage_manager.config.get("stages", {}).get("self_intro", {})
         fallback_timeout = stage_config.get("fallback_timeout_seconds", 45)
@@ -231,7 +307,15 @@ async def handle_experience(session: AgentSession, stage_manager: StageManager, 
     if not stage_manager.flag_exp_start:
         stage_manager.flag_exp_start = True
         transition_msg = "Let's dive into your past experience. Can you tell me about a project you're particularly proud of? What was your role, and what challenges did you face?"
-        await session.generate_reply(user_input=transition_msg)
+        try:
+            await session.say(transition_msg, allow_interruptions=True)
+            logger.info(f"✅ Agent said transition: {transition_msg[:50]}...")
+        except Exception as e:
+            logger.error(f"❌ Error sending transition: {e}")
+            try:
+                await session.generate_reply(user_input=transition_msg)
+            except:
+                pass
         await assistant.save_to_transcript("assistant", transition_msg)
         logger.info("Experience stage started")
         

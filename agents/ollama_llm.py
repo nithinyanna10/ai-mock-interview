@@ -1,6 +1,7 @@
 import asyncio
 import ollama
 import logging
+import uuid
 from typing import AsyncIterator
 
 from livekit.agents.llm import (
@@ -9,9 +10,34 @@ from livekit.agents.llm import (
     ChatChunk,
     ChatMessage,
     ChatRole,
+    ChoiceDelta,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class AsyncIteratorContextManager:
+    """Wrapper to make async iterator work as async context manager"""
+    def __init__(self, async_iter: AsyncIterator[ChatChunk]):
+        self._iter = async_iter
+        self._iter_obj = None
+    
+    async def __aenter__(self):
+        self._iter_obj = self._iter.__aiter__()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if hasattr(self._iter_obj, 'aclose'):
+            await self._iter_obj.aclose()
+        return False
+    
+    def __aiter__(self):
+        return self
+    
+    async def __anext__(self):
+        if self._iter_obj is None:
+            self._iter_obj = self._iter.__aiter__()
+        return await self._iter_obj.__anext__()
 
 
 class OllamaLLM(LLM):
@@ -28,6 +54,13 @@ class OllamaLLM(LLM):
         super().__init__()
         self._model = model
         self.base_url = base_url
+        # Configure Ollama client to use custom host if provided
+        import os
+        ollama_host = os.getenv("OLLAMA_HOST")
+        if ollama_host:
+            import ollama
+            # Set the host for Ollama client
+            ollama.Client(host=ollama_host)
 
     @property
     def model(self):
@@ -66,11 +99,12 @@ class OllamaLLM(LLM):
 
         async def _stream():
             try:
+                # ChatContext doesn't have .messages, iterate over items instead
                 payload = []
-                for m in chat_ctx.messages:
+                for msg in chat_ctx.items():
                     payload.append({
-                        "role": m.role.value,
-                        "content": m.content,
+                        "role": msg.role.value,
+                        "content": msg.content,
                     })
 
                 loop = asyncio.get_event_loop()
@@ -88,15 +122,11 @@ class OllamaLLM(LLM):
                 for chunk in stream:
                     if "message" in chunk and "content" in chunk["message"]:
                         content = chunk["message"]["content"]
-
+                        
+                        # ChatChunk requires id and delta as ChoiceDelta
                         yield ChatChunk(
-                            choices=[
-                                ChatChunk.Choice(
-                                    delta=ChatChunk.Choice.Delta(
-                                        content=content
-                                    )
-                                )
-                            ]
+                            id=str(uuid.uuid4()),
+                            delta=ChoiceDelta(content=content)
                         )
 
                     if chunk.get("done"):
@@ -105,13 +135,9 @@ class OllamaLLM(LLM):
             except Exception as e:
                 logger.error(f"Ollama chat() streaming error: {e}", exc_info=True)
                 yield ChatChunk(
-                    choices=[
-                        ChatChunk.Choice(
-                            delta=ChatChunk.Choice.Delta(
-                                content="Sorry, I had trouble generating my response."
-                            )
-                        )
-                    ]
+                    id=str(uuid.uuid4()),
+                    delta=ChoiceDelta(content="Sorry, I had trouble generating my response.")
                 )
 
-        return _stream()
+        # Return wrapped async iterator that works as async context manager
+        return AsyncIteratorContextManager(_stream())

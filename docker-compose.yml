@@ -35,8 +35,11 @@ services:
 
   agent:
     build: .
+    network_mode: host
+    env_file:
+      - .env
     environment:
-      - REDIS_HOST=redis
+      - REDIS_HOST=localhost
       - REDIS_PORT=6379
       - REDIS_DB=0
       - LIVEKIT_URL=${LIVEKIT_URL}
@@ -44,14 +47,13 @@ services:
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
       - LIVEKIT_WS_URL=${LIVEKIT_WS_URL}
       - LIVEKIT_AGENT_NAME=interview-agent
-    depends_on:
-      - redis
-      - api
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OLLAMA_HOST=http://localhost:11434
     volumes:
       - ./config:/app/config
       - ./agents:/app/agents
       - ./server:/app/server
-    command: python -m agents.interview_agent dev --agent-name=interview-agent
+    command: python -m agents.interview_agent dev
     # For production, use:
     # command: python agents/interview_agent.py start
 
