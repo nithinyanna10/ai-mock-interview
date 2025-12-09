@@ -1,0 +1,42 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 LIVEKIT PLAYGROUND VALUES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Visit: https://agents-playground.livekit.io
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🌐 Server URL:
+wss://test-hll5bwms.livekit.cloud
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏠 Room Name:
+demo-interview-1765256487
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔑 Token:
+[Run this command to get fresh token:]
+curl -X POST http://localhost:8081/token \
+  -H "Content-Type: application/json" \
+  -d '{"room": "demo-interview-1765256487"}' | python3 -m json.tool
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 Instructions:
+1. Copy Server URL above
+2. Copy Room Name above  
+3. Run the token command and copy the "token" value
+4. Paste all three into agents-playground.livekit.io
+5. Click "Connect"
+6. Allow microphone access
+7. Agent will join automatically!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 To monitor the interview in real-time:
+./monitor_interview.sh demo-interview-1765256487
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

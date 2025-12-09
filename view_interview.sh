@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# View full interview transcript in real-time
+
+if [ -z "$1" ]; then
+    echo "Usage: ./view_interview.sh <room_id>"
+    echo ""
+    echo "Available rooms:"
+    docker-compose exec redis redis-cli KEYS "interview:*:stage" 2>/dev/null | sed 's/interview://' | sed 's/:stage//' | head -10
+    exit 1
+fi
+
+ROOM_ID=$1
+
+echo "============================================================"
+echo "📝 Interview Transcript - Room: $ROOM_ID"
+echo "============================================================"
+echo ""
+echo "Press Ctrl+C to stop watching"
+echo ""
+
+while true; do
+    clear
+    echo "============================================================"
+    echo "📝 Interview Transcript - Room: $ROOM_ID"
+    echo "   Last updated: $(date '+%H:%M:%S')"
+    echo "============================================================"
+    echo ""
+    
+    TRANSCRIPT=$(curl -s http://localhost:8081/interview/$ROOM_ID/transcript)
+    
+    MESSAGE_COUNT=$(echo "$TRANSCRIPT" | python3 -c "import sys, json; print(json.load(sys.stdin).get('message_count', 0))" 2>/dev/null)
+    
+    if [ "$MESSAGE_COUNT" = "0" ] || [ -z "$MESSAGE_COUNT" ]; then
+        echo "⏳ No messages yet. Waiting for conversation to start..."
+        echo ""
+        echo "💡 Make sure:"
+        echo "   1. Interview session is started"
+        echo "   2. Agent has joined the room"
+        echo "   3. User is speaking"
+    else
+        echo "📊 Total Messages: $MESSAGE_COUNT"
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        # Display messages in a readable format
+        echo "$TRANSCRIPT" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+messages = data.get('messages', [])
+
+for i, msg in enumerate(messages, 1):
+    role = msg.get('role', 'unknown')
+    content = msg.get('content', '')
+    timestamp = msg.get('timestamp', '')
+    
+    if role == 'assistant':
+        print(f'🤖 AGENT: {content}')
+    elif role == 'user':
+        print(f'👤 USER:  {content}')
+    else:
+        print(f'❓ {role.upper()}: {content}')
+    
+    if timestamp:
+        print(f'   ⏰ {timestamp}')
+    print()
+" 2>/dev/null || echo "Error parsing transcript"
+    fi
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Refreshing every 2 seconds... (Ctrl+C to stop)"
+    
+    sleep 2
+done
+
