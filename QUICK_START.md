@@ -1,54 +1,52 @@
-# 🚀 Quick Start - View Interview Transcripts
+# 🚀 Quick Start - Auto Connect Client
 
-## See the Full Conversation
+## Option 1: Simple Web Client (No Manual Token Copying!)
 
-### Step 1: Start an Interview
+### Start the client server:
 ```bash
-curl -X POST http://localhost:8081/interview/start \
+python client/server.py
+```
+
+### Open in browser:
+```
+http://localhost:8082/auto-connect.html
+```
+
+### That's it! Just click "Connect to Interview" and it will:
+- ✅ Automatically generate a token
+- ✅ Connect to LiveKit
+- ✅ Dispatch the agent
+- ✅ Start the interview
+
+---
+
+## Option 2: Use LiveKit Playground (Manual)
+
+1. Get token:
+```bash
+curl -X POST http://localhost:8081/token \
   -H "Content-Type: application/json" \
-  -d '{"room_id": "my-interview", "candidate_name": "John Doe"}'
+  -d '{"room": "demo-interview-123"}' | python3 -m json.tool
 ```
 
-### Step 2: View the Transcript (Real-Time)
+2. Go to: https://agents-playground.livekit.io/
+3. Click "Manual"
+4. Paste Server, Room, and Token
+5. Click "Connect"
 
-**Option A: Live View (Updates Every 2 Seconds)**
+---
+
+## Option 3: One-Line Token Generator
+
+Create an alias in your shell:
 ```bash
-./view_interview.sh my-interview
+alias get-token='curl -s -X POST http://localhost:8081/token -H "Content-Type: application/json" -d "{\"room\": \"demo-interview-$(date +%s)\"}" | python3 -c "import sys, json; d=json.load(sys.stdin); print(f\"Room: {d[\"room\"]}\nToken: {d[\"token\"]}\")"'
 ```
 
-**Option B: One-Time View**
-```bash
-./get_transcript.sh my-interview
-```
+Then just run: `get-token`
 
-**Option C: JSON API**
-```bash
-curl http://localhost:8081/interview/my-interview/transcript | python3 -m json.tool
-```
+---
 
-## What You'll See
+## Recommended: Use Option 1 (Auto Connect Client)
 
-```
-🤖 AGENT: Hello! I'm conducting your interview today. To start, 
-         could you tell me a bit about yourself...
-   ⏰ 2025-12-09T04:52:18.993999
-
-👤 USER:  Hi, I'm John. I'm a software engineer with 5 years 
-         of experience...
-   ⏰ 2025-12-09T04:52:25.123456
-
-🤖 AGENT: That's great! Can you tell me more about a specific 
-         project you worked on?
-   ⏰ 2025-12-09T04:52:30.456789
-```
-
-## Find Your Room ID
-
-```bash
-docker-compose exec redis redis-cli KEYS "interview:*:stage" | sed 's/interview://' | sed 's/:stage//'
-```
-
-## Full Documentation
-
-See `VIEW_TRANSCRIPT.md` for complete details.
-
+It's the easiest - no copying/pasting needed!

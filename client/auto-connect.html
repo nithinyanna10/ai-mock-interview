@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Mock Interview - Auto Connect</title>
+    <!-- Try local file first, then CDN fallbacks -->
+    <script src="livekit-client.umd.js" 
+            onerror="loadLiveKitCDN()"></script>
+    <script>
+        function loadLiveKitCDN() {
+            console.log('Local file not found, trying CDN...');
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/livekit-client@latest/dist/livekit-client.umd.js';
+            script.onerror = function() {
+                console.log('Primary CDN failed, trying jsdelivr...');
+                const script2 = document.createElement('script');
+                script2.src = 'https://cdn.jsdelivr.net/npm/livekit-client@1.15.0/dist/livekit-client.umd.js';
+                script2.onerror = function() {
+                    showCDNError();
+                };
+                document.head.appendChild(script2);
+            };
+            document.head.appendChild(script);
+        }
+        
+        function showCDNError() {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; background: #ffebee; color: #c62828; padding: 20px; text-align: center; z-index: 10000;';
+            errorDiv.innerHTML = '<h2>⚠️ LiveKit Client Loading Issue</h2><p>Cannot load LiveKit client library.</p><p><strong>Solution:</strong> Use LiveKit Playground instead</p><p><a href="https://agents-playground.livekit.io/" target="_blank" style="color: #1976d2; font-weight: bold;">Open LiveKit Playground →</a></p>';
+            document.body.insertBefore(errorDiv, document.body.firstChild);
+        }
+        
+        // Verify LiveKit client loaded
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                if (typeof LiveKitClient !== 'undefined' || typeof window.LiveKitClient !== 'undefined') {
+                    console.log('✅ LiveKit client loaded successfully');
+                } else {
+                    console.warn('LiveKit client not loaded yet, will check again...');
+                }
+            }, 1000);
+        });
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .status.warning {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 10px;
+            font-weight: 600;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .disconnect-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .info-box {
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        
+        .info-box h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        .info-box p {
+            color: #666;
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 AI Mock Interview</h1>
+        <p class="subtitle">One-click connection - No token copying needed!</p>
+        
+        <div id="status" class="status info hidden"></div>
+        
+        <div id="connectSection">
+            <button id="connectBtn" onclick="connectToInterview()">
+                Connect to Interview
+            </button>
+            <p style="margin-top: 20px; color: #666; font-size: 14px;">
+                Click to automatically generate token and connect
+            </p>
+        </div>
+        
+        <div id="connectedSection" class="hidden">
+            <div class="status success">
+                ✅ Connected! Agent should join shortly...
+            </div>
+            <div class="info-box">
+                <h3>📋 Connection Info</h3>
+                <p><strong>Room:</strong> <span id="roomName">-</span></p>
+                <p><strong>Status:</strong> <span id="connectionStatus">Connecting...</span></p>
+            </div>
+            <button class="disconnect-btn" onclick="disconnect()">
+                Disconnect
+            </button>
+        </div>
+        
+        <div class="info-box" style="margin-top: 30px;">
+            <h3>💡 How it works:</h3>
+            <p>1. Click "Connect to Interview"</p>
+            <p>2. Token is automatically generated</p>
+            <p>3. Connects to LiveKit room</p>
+            <p>4. Agent joins automatically</p>
+            <p>5. Start speaking - agent will respond!</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8081';
+        const LIVEKIT_SERVER = 'wss://test-hll5bwms.livekit.cloud';
+        
+        let room = null;
+        let currentRoomName = null;
+        
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.classList.remove('hidden');
+        }
+        
+        function hideStatus() {
+            document.getElementById('status').classList.add('hidden');
+        }
+        
+        async function connectToInterview() {
+            const connectBtn = document.getElementById('connectBtn');
+            connectBtn.disabled = true;
+            connectBtn.innerHTML = '<span class="loading"></span> Connecting...';
+            
+            try {
+                showStatus('🔄 Generating token...', 'info');
+                
+                // Generate room name
+                const roomName = `demo-interview-${Date.now()}`;
+                currentRoomName = roomName;
+                
+                // Get token from API
+                const response = await fetch(`${API_BASE}/token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ room: roomName })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                showStatus('✅ Token generated! Connecting to room...', 'success');
+                
+                // Update UI
+                document.getElementById('roomName').textContent = roomName;
+                document.getElementById('connectionStatus').textContent = 'Connecting...';
+                
+                // Connect to LiveKit
+                showStatus('🔗 Connecting to LiveKit...', 'info');
+                
+                // Wait for LiveKit client to load
+                if (typeof LiveKitClient === 'undefined') {
+                    throw new Error('LiveKit client library not loaded. Please refresh the page.');
+                }
+                
+                room = new LiveKitClient.Room({
+                    adaptiveStream: true,
+                    dynacast: true,
+                });
+                
+                // Set up event handlers
+                room.on('participantConnected', (participant) => {
+                    console.log('Participant connected:', participant.identity);
+                    if (participant.identity.startsWith('agent-')) {
+                        showStatus('✅ Agent joined! You can start speaking now.', 'success');
+                        document.getElementById('connectionStatus').textContent = 'Agent Connected';
+                    }
+                });
+                
+                room.on('trackSubscribed', (track, publication, participant) => {
+                    console.log('Track subscribed:', track.kind, participant.identity);
+                    if (track.kind === 'audio') {
+                        const audioElement = track.attach();
+                        document.body.appendChild(audioElement);
+                        audioElement.play().catch(err => console.error('Audio play error:', err));
+                    }
+                });
+                
+                room.on('disconnected', () => {
+                    showStatus('❌ Disconnected from room', 'error');
+                    document.getElementById('connectSection').classList.remove('hidden');
+                    document.getElementById('connectedSection').classList.add('hidden');
+                });
+                
+                // Connect to room
+                await room.connect(LIVEKIT_SERVER, data.token);
+                
+                showStatus('✅ Connected! Waiting for agent...', 'success');
+                document.getElementById('connectSection').classList.add('hidden');
+                document.getElementById('connectedSection').classList.remove('hidden');
+                document.getElementById('connectionStatus').textContent = 'Connected - Waiting for agent';
+                
+                // Enable microphone
+                await room.localParticipant.enableCameraAndMicrophone();
+                
+            } catch (error) {
+                console.error('Connection error:', error);
+                showStatus(`❌ Error: ${error.message}`, 'error');
+                connectBtn.disabled = false;
+                connectBtn.textContent = 'Connect to Interview';
+            }
+        }
+        
+        async function disconnect() {
+            if (room) {
+                await room.disconnect();
+                room = null;
+            }
+            document.getElementById('connectSection').classList.remove('hidden');
+            document.getElementById('connectedSection').classList.add('hidden');
+            hideStatus();
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('connectBtn').textContent = 'Connect to Interview';
+        }
+        
+        // Check if API is available on load and verify LiveKit client loaded
+        window.addEventListener('load', async () => {
+            // Check if LiveKit client loaded
+            if (typeof LiveKitClient === 'undefined') {
+                showStatus('❌ LiveKit client library failed to load. Please refresh the page.', 'error');
+                return;
+            }
+            
+            // Check if API is available
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                if (response.ok) {
+                    showStatus('✅ API is ready! Click to connect.', 'success');
+                    setTimeout(hideStatus, 3000);
+                }
+            } catch (error) {
+                showStatus('⚠️ API not available. Make sure docker-compose is running.', 'warning');
+            }
+        });
+    </script>
+</body>
+</html>
+
